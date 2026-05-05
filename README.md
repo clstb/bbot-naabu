@@ -56,6 +56,27 @@ bbot -m naabu -o exclude_cdn=false cdn-host.example.com
 | `force_scan_type` | `False` | Prevent automatic SYN-to-connect fallback |
 | `version` | `2.3.2` | Naabu binary version to download |
 
+## Testing
+
+### Unit tests
+
+Unit tests mock the BBOT framework and naabu subprocess — no network or root required.
+
+```bash
+pip install -e ".[dev]"
+pytest test_naabu.py -v
+```
+
+### Live integration test
+
+Scan a real target to verify the module end-to-end. Requires network access; naabu binary is auto-installed on first run.
+
+```bash
+bbot -t scanme.nmap.org -m naabu -o ports=22,80,443 -o scan_type=connect
+```
+
+Expected: `OPEN_TCP_PORT` events for ports 22 and 80 on `scanme.nmap.org`.
+
 ## Development
 
 ```bash
