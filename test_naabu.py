@@ -469,6 +469,30 @@ class TestFullSetup:
         assert module._exclude_cdn is False
 
     @pytest.mark.asyncio
+    async def test_top_ports_minimum_enforced(self, module):
+        module.config = {
+            "scan_type": "connect",
+            "top_ports": 10,
+            "ports": "",
+            "rate": 100,
+            "timeout": 5000,
+            "retries": 3,
+            "verify": False,
+            "exclude_cdn": False,
+            "interface": "",
+            "exclude_ports": "",
+            "host_discovery": False,
+            "passive": False,
+            "force_scan_type": False,
+        }
+        with patch.object(module, "warning") as mock_warn:
+            result = await module.setup()
+        assert result is True
+        assert module._port_args == ["-top-ports", "100"]
+        mock_warn.assert_called_once()
+        assert "100" in mock_warn.call_args[0][0]
+
+    @pytest.mark.asyncio
     async def test_cleanup_removes_temp_files(self, module):
         temp = MagicMock()
         module._temp_files = [temp]

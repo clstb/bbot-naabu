@@ -190,6 +190,10 @@ class naabu(BaseModule):
         if ports and top_ports != 100:
             self.warning("Both 'ports' and 'top_ports' are set; 'ports' takes precedence")
 
+        if not ports and top_ports < 100:
+            self.warning(f"top_ports must be at least 100, got {top_ports}; using 100")
+            top_ports = 100
+
         self._port_args = self._resolve_port_args(ports, top_ports)
         self._interface = interface
         self._temp_files = []
