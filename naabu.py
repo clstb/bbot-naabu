@@ -116,6 +116,25 @@ class naabu(BaseModule):
         cmd.extend(["-l", target_file])
         return cmd
 
+    @staticmethod
+    def _resolve_port_args(ports, top_ports):
+        if ports:
+            return ["-p", ports]
+        return ["-top-ports", str(top_ports)]
+
+    async def _do_setup(self, scan_type, interface, force_scan_type):
+        if scan_type == "syn" and os.getuid() != 0:
+            self.warning("SYN scan requires root privileges, falling back to connect scan")
+            scan_type = "connect"
+        if scan_type == "syn" and interface and self._is_tunnel_interface(interface) and not force_scan_type:
+            self.warning(
+                f"Interface {interface} appears to be a tunnel; "
+                f"SYN scans are unreliable on tunnels, falling back to connect scan"
+            )
+            scan_type = "connect"
+        self._scan_type = scan_type
+        return True
+
     async def setup(self):
         return True
 

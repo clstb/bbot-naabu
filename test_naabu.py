@@ -212,3 +212,63 @@ class TestCDNFiltering:
         module._exclude_cdn = True
         event = _make_event("IP_ADDRESS", "1.2.3.4", tags={"cdn", "content-delivery"})
         assert module._should_exclude(event) is False
+
+
+class TestSetupHelpers:
+    @pytest.mark.asyncio
+    async def test_syn_requires_root(self, module):
+        with patch("os.getuid", return_value=1000):
+            with patch.object(module, "warning") as mock_warn:
+                result = await module._do_setup("syn", "", False)
+                assert result is True
+                mock_warn.assert_called_once()
+                assert "root" in mock_warn.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_syn_allowed_as_root(self, module):
+        with patch("os.getuid", return_value=0):
+            with patch.object(module, "warning") as mock_warn:
+                result = await module._do_setup("syn", "", False)
+                assert result is True
+                assert module._scan_type == "syn"
+                mock_warn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_connect_no_root_needed(self, module):
+        with patch("os.getuid", return_value=1000):
+            with patch.object(module, "warning") as mock_warn:
+                result = await module._do_setup("connect", "", False)
+                assert result is True
+                assert module._scan_type == "connect"
+                mock_warn.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tunnel_fallback(self, module):
+        with patch("os.getuid", return_value=0):
+            with patch.object(module, "warning") as mock_warn:
+                result = await module._do_setup("syn", "wg0", False)
+                assert result is True
+                assert module._scan_type == "connect"
+                mock_warn.assert_called_once()
+                assert "tunnel" in mock_warn.call_args[0][0].lower()
+
+    @pytest.mark.asyncio
+    async def test_force_scan_type_prevents_tunnel_fallback(self, module):
+        with patch("os.getuid", return_value=0):
+            with patch.object(module, "warning") as mock_warn:
+                result = await module._do_setup("syn", "wg0", True)
+                assert result is True
+                assert module._scan_type == "syn"
+                mock_warn.assert_not_called()
+
+    def test_ports_override_top_ports(self, module):
+        port_args = module._resolve_port_args("80,443", 100)
+        assert port_args == ["-p", "80,443"]
+
+    def test_top_ports_default(self, module):
+        port_args = module._resolve_port_args("", 100)
+        assert port_args == ["-top-ports", "100"]
+
+    def test_top_ports_zero(self, module):
+        port_args = module._resolve_port_args("", 0)
+        assert port_args == ["-top-ports", "0"]
