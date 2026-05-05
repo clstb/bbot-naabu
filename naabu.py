@@ -172,7 +172,28 @@ class naabu(BaseModule):
         return True
 
     async def setup(self):
-        return True
+        scan_type = self.config.get("scan_type", "syn")
+        top_ports = self.config.get("top_ports", 100)
+        ports = self.config.get("ports", "")
+        self._rate = self.config.get("rate", 1000)
+        self._timeout = self.config.get("timeout", 5000)
+        self._retries = self.config.get("retries", 3)
+        self._verify = self.config.get("verify", True)
+        self._exclude_cdn = self.config.get("exclude_cdn", True)
+        interface = self.config.get("interface", "")
+        self._exclude_ports = self.config.get("exclude_ports", "")
+        self._host_discovery = self.config.get("host_discovery", False)
+        self._passive = self.config.get("passive", False)
+        force_scan_type = self.config.get("force_scan_type", False)
+
+        if ports and top_ports != 100:
+            self.warning("Both 'ports' and 'top_ports' are set; 'ports' takes precedence")
+
+        self._port_args = self._resolve_port_args(ports, top_ports)
+        self._interface = interface
+        self._temp_files = []
+
+        return await self._do_setup(scan_type, interface, force_scan_type)
 
     async def handle_batch(self, *events):
         correlator, targets = self._resolve_targets(events)
@@ -224,4 +245,8 @@ class naabu(BaseModule):
         return (ip, port)
 
     async def cleanup(self):
-        pass
+        for f in self._temp_files:
+            try:
+                f.unlink(missing_ok=True)
+            except Exception:
+                pass

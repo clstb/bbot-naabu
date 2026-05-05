@@ -39,6 +39,7 @@ def module():
         m.emit_event = AsyncMock()
         m.run_process_live = MagicMock()
         m.set_error_state = MagicMock()
+        m.warning = MagicMock()
         m._temp_files = []
         yield m
     finally:
@@ -405,3 +406,84 @@ class TestHandleBatch:
         await module.handle_batch(dns_event)
         call_kwargs = module.make_event.call_args[1]
         assert "example.com:80" == call_kwargs["data"]
+
+
+class TestFullSetup:
+    @pytest.mark.asyncio
+    async def test_setup_initializes_all_attributes(self, module):
+        module.config = {
+            "scan_type": "syn",
+            "top_ports": 100,
+            "ports": "",
+            "rate": 1000,
+            "timeout": 5000,
+            "retries": 3,
+            "verify": True,
+            "exclude_cdn": True,
+            "interface": "",
+            "exclude_ports": "",
+            "host_discovery": False,
+            "passive": False,
+            "force_scan_type": False,
+        }
+        with patch("os.getuid", return_value=1000):
+            result = await module.setup()
+        assert result is True
+        assert module._scan_type == "connect"
+        assert module._exclude_cdn is True
+        assert module._rate == 1000
+        assert module._timeout == 5000
+        assert module._retries == 3
+        assert module._verify is True
+        assert module._interface == ""
+        assert module._exclude_ports == ""
+        assert module._host_discovery is False
+        assert module._passive is False
+        assert module._port_args == ["-top-ports", "100"]
+        assert module._temp_files == []
+
+    @pytest.mark.asyncio
+    async def test_setup_with_custom_ports(self, module):
+        module.config = {
+            "scan_type": "connect",
+            "top_ports": 1000,
+            "ports": "80,443",
+            "rate": 500,
+            "timeout": 3000,
+            "retries": 2,
+            "verify": False,
+            "exclude_cdn": False,
+            "interface": "eth0",
+            "exclude_ports": "22",
+            "host_discovery": False,
+            "passive": False,
+            "force_scan_type": False,
+        }
+        result = await module.setup()
+        assert result is True
+        assert module._scan_type == "connect"
+        assert module._port_args == ["-p", "80,443"]
+        assert module._rate == 500
+        assert module._interface == "eth0"
+        assert module._exclude_ports == "22"
+        assert module._exclude_cdn is False
+
+    @pytest.mark.asyncio
+    async def test_cleanup_removes_temp_files(self, module):
+        temp = MagicMock()
+        module._temp_files = [temp]
+        await module.cleanup()
+        temp.unlink.assert_called_once_with(missing_ok=True)
+
+    @pytest.mark.asyncio
+    async def test_cleanup_handles_unlink_error(self, module):
+        temp = MagicMock()
+        temp.unlink.side_effect = OSError("permission denied")
+        module._temp_files = [temp]
+        await module.cleanup()
+        temp.unlink.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cleanup_empty_list(self, module):
+        module._temp_files = []
+        await module.cleanup()
