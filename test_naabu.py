@@ -487,3 +487,73 @@ class TestFullSetup:
     async def test_cleanup_empty_list(self, module):
         module._temp_files = []
         await module.cleanup()
+
+
+class TestIntegration:
+    @pytest.mark.asyncio
+    async def test_full_scan_flow(self):
+        with patch("naabu.naabu.__init__", return_value=None):
+            m = NaabuModule()
+
+        mock_helpers = MagicMock()
+        mock_helpers.tempfile = MagicMock(return_value="/tmp/test_integration_targets")
+        mock_helpers.make_netloc = lambda host, port: f"{host}:{port}"
+        mock_log = MagicMock()
+        m.make_event = MagicMock(side_effect=lambda d=None, t=None, **kw: MagicMock(data=d, type=t))
+        m.emit_event = AsyncMock()
+        m.warning = MagicMock()
+        m.debug = MagicMock()
+        m.set_error_state = MagicMock()
+        m._temp_files = []
+
+        test_config = {
+            "scan_type": "connect",
+            "top_ports": 100,
+            "ports": "80,443",
+            "rate": 500,
+            "timeout": 3000,
+            "retries": 2,
+            "verify": False,
+            "exclude_cdn": True,
+            "interface": "",
+            "exclude_ports": "",
+            "host_discovery": False,
+            "passive": False,
+            "force_scan_type": False,
+        }
+
+        patches = [
+            patch.object(type(m), "helpers", new_callable=lambda: property(lambda self: mock_helpers)),
+            patch.object(type(m), "log", mock_log),
+            patch.object(type(m), "config", test_config),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            result = await m.setup()
+            assert result is True
+            assert m._scan_type == "connect"
+            assert m._port_args == ["-p", "80,443"]
+
+            events = [
+                _make_event("IP_ADDRESS", "10.0.0.1"),
+                _make_event("DNS_NAME", "example.com", resolved_hosts=["93.184.216.34"]),
+                _make_event("IP_ADDRESS", "104.16.0.1", tags={"cdn-cloudflare"}),
+            ]
+
+            async def mock_run_process(*args, **kwargs):
+                yield '{"ip":"10.0.0.1","port":80}'
+                yield '{"ip":"93.184.216.34","port":443}'
+
+            m.run_process_live = mock_run_process
+            await m.handle_batch(*events)
+
+            assert m.emit_event.call_count == 2
+            emitted_data = [call[1].get("data") or call[0][0] for call in m.make_event.call_args_list]
+            assert "10.0.0.1:80" in emitted_data
+            assert "example.com:443" in emitted_data
+
+            await m.cleanup()
+        finally:
+            for p in patches:
+                p.stop()
