@@ -30,7 +30,6 @@ class naabu(BaseModule):
         "retries": 3,
         "verify": True,
         "exclude_cdn": True,
-        "stream": False,
         "host_discovery": False,
         "passive": False,
         "interface": "",
@@ -48,7 +47,6 @@ class naabu(BaseModule):
         "retries": "Number of retries per probe",
         "verify": "Verify open ports with a TCP connection",
         "exclude_cdn": "Pre-filter CDN/cloud hosts by checking event tags",
-        "stream": "Stream mode — scan targets one-by-one",
         "host_discovery": "Host discovery only — determine if hosts are up",
         "passive": "Passive mode — rely on SYN-ACK responses",
         "interface": "Network interface to use (e.g., eth0, wg0)",
@@ -159,6 +157,9 @@ class naabu(BaseModule):
         return ["-top-ports", str(top_ports)]
 
     async def _do_setup(self, scan_type, interface, force_scan_type):
+        if scan_type not in self.SCAN_TYPE_MAP:
+            self.warning(f"Unknown scan_type '{scan_type}', falling back to connect scan")
+            scan_type = "connect"
         if scan_type == "syn" and os.getuid() != 0:
             self.warning("SYN scan requires root privileges, falling back to connect scan")
             scan_type = "connect"
