@@ -157,3 +157,33 @@ class TestCommandConstruction:
         _cmd_module(module, _passive=True, _verify=False)
         cmd = module._build_command("/tmp/targets.txt")
         assert "-passive" in cmd
+
+
+class TestJSONParsing:
+    def test_parse_valid_line(self, module):
+        line = '{"ip":"192.168.1.1","port":80}'
+        result = module._parse_result(line)
+        assert result == ("192.168.1.1", 80)
+
+    def test_parse_with_host_field(self, module):
+        line = '{"ip":"192.168.1.1","port":443,"host":"example.com"}'
+        result = module._parse_result(line)
+        assert result == ("192.168.1.1", 443)
+
+    def test_parse_malformed_json(self, module):
+        line = "not json at all"
+        result = module._parse_result(line)
+        assert result is None
+
+    def test_parse_missing_port(self, module):
+        line = '{"ip":"192.168.1.1"}'
+        result = module._parse_result(line)
+        assert result is None
+
+    def test_parse_empty_line(self, module):
+        result = module._parse_result("")
+        assert result is None
+
+    def test_parse_non_dict_json(self, module):
+        result = module._parse_result('"just a string"')
+        assert result is None

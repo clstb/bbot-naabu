@@ -117,5 +117,19 @@ class naabu(BaseModule):
     async def handle_batch(self, *events):
         pass
 
+    @staticmethod
+    def _parse_result(line):
+        try:
+            data = json.loads(line)
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+        ip = data.get("ip")
+        port = data.get("port")
+        if ip is None or port is None:
+            return None
+        return (ip, port)
+
     async def cleanup(self):
         pass
