@@ -90,6 +90,11 @@ class naabu(BaseModule):
             return False
         return interface.startswith(self.TUNNEL_INTERFACE_PREFIXES)
 
+    def _should_exclude(self, event):
+        if not self._exclude_cdn:
+            return False
+        return any(tag.startswith("cdn-") for tag in event.tags)
+
     def _build_command(self, target_file):
         cmd = ["naabu", "-json", "-silent"]
         cmd.extend(["-s", self.SCAN_TYPE_MAP[self._scan_type]])

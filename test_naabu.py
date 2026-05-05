@@ -187,3 +187,28 @@ class TestJSONParsing:
     def test_parse_non_dict_json(self, module):
         result = module._parse_result('"just a string"')
         assert result is None
+
+
+class TestCDNFiltering:
+    def test_cdn_event_excluded(self, module, cdn_event):
+        module._exclude_cdn = True
+        assert module._should_exclude(cdn_event) is True
+
+    def test_non_cdn_event_included(self, module, ip_event):
+        module._exclude_cdn = True
+        assert module._should_exclude(ip_event) is False
+
+    def test_cdn_filter_disabled(self, module, cdn_event):
+        module._exclude_cdn = False
+        assert module._should_exclude(cdn_event) is False
+
+    def test_cdn_tag_variants(self, module):
+        module._exclude_cdn = True
+        for tag in ["cdn-cloudflare", "cdn-akamai", "cdn-aws", "cdn-something"]:
+            event = _make_event("IP_ADDRESS", "1.2.3.4", tags={tag})
+            assert module._should_exclude(event) is True
+
+    def test_non_cdn_tags_not_matched(self, module):
+        module._exclude_cdn = True
+        event = _make_event("IP_ADDRESS", "1.2.3.4", tags={"cdn", "content-delivery"})
+        assert module._should_exclude(event) is False
