@@ -75,3 +75,85 @@ class TestTunnelDetection:
 
     def test_none_interface(self, module):
         assert module._is_tunnel_interface(None) is False
+
+
+def _cmd_module(module, **overrides):
+    """Helper to set all command-related attributes on a module."""
+    defaults = {
+        "_scan_type": "syn",
+        "_port_args": ["-top-ports", "100"],
+        "_rate": 1000,
+        "_timeout": 5000,
+        "_retries": 3,
+        "_verify": True,
+        "_interface": "",
+        "_exclude_ports": "",
+        "_host_discovery": False,
+        "_passive": False,
+    }
+    defaults.update(overrides)
+    for k, v in defaults.items():
+        setattr(module, k, v)
+    return module
+
+
+class TestCommandConstruction:
+    def test_default_syn_command(self, module):
+        _cmd_module(module)
+        cmd = module._build_command("/tmp/targets.txt")
+        assert cmd[0] == "naabu"
+        s_idx = cmd.index("-s")
+        assert cmd[s_idx + 1] == "s"
+        assert "-json" in cmd
+        assert "-silent" in cmd
+        assert "-top-ports" in cmd
+        assert "100" in cmd
+        assert "-rate" in cmd
+        assert "1000" in cmd
+        assert "-timeout" in cmd
+        assert "5000" in cmd
+        assert "-retries" in cmd
+        assert "3" in cmd
+        assert "-verify" in cmd
+        assert "-l" in cmd
+        assert "/tmp/targets.txt" in cmd
+
+    def test_connect_scan(self, module):
+        _cmd_module(module, _scan_type="connect", _verify=False)
+        cmd = module._build_command("/tmp/targets.txt")
+        s_idx = cmd.index("-s")
+        assert cmd[s_idx + 1] == "c"
+        assert "-verify" not in cmd
+
+    def test_udp_scan(self, module):
+        _cmd_module(module, _scan_type="udp")
+        cmd = module._build_command("/tmp/targets.txt")
+        s_idx = cmd.index("-s")
+        assert cmd[s_idx + 1] == "u"
+
+    def test_custom_ports(self, module):
+        _cmd_module(module, _port_args=["-p", "80,443,8080"])
+        cmd = module._build_command("/tmp/targets.txt")
+        assert "-p" in cmd
+        assert "80,443,8080" in cmd
+        assert "-top-ports" not in cmd
+
+    def test_interface_and_exclude_ports(self, module):
+        _cmd_module(module, _interface="eth0", _exclude_ports="22,23")
+        cmd = module._build_command("/tmp/targets.txt")
+        assert "-interface" in cmd
+        assert "eth0" in cmd
+        assert "-exclude-ports" in cmd
+        assert "22,23" in cmd
+
+    def test_host_discovery_omits_port_args(self, module):
+        _cmd_module(module, _host_discovery=True, _port_args=[], _verify=False)
+        cmd = module._build_command("/tmp/targets.txt")
+        assert "-sn" in cmd
+        assert "-top-ports" not in cmd
+        assert "-p" not in cmd
+
+    def test_passive_mode(self, module):
+        _cmd_module(module, _passive=True, _verify=False)
+        cmd = module._build_command("/tmp/targets.txt")
+        assert "-passive" in cmd

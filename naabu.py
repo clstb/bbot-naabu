@@ -79,10 +79,37 @@ class naabu(BaseModule):
 
     TUNNEL_INTERFACE_PREFIXES = ("wg", "tun", "tap", "utun", "tailscale")
 
+    SCAN_TYPE_MAP = {
+        "syn": "s",
+        "connect": "c",
+        "udp": "u",
+    }
+
     def _is_tunnel_interface(self, interface):
         if not interface:
             return False
         return interface.startswith(self.TUNNEL_INTERFACE_PREFIXES)
+
+    def _build_command(self, target_file):
+        cmd = ["naabu", "-json", "-silent"]
+        cmd.extend(["-s", self.SCAN_TYPE_MAP[self._scan_type]])
+        if self._host_discovery:
+            cmd.append("-sn")
+        else:
+            cmd.extend(self._port_args)
+        cmd.extend(["-rate", str(self._rate)])
+        cmd.extend(["-timeout", str(self._timeout)])
+        cmd.extend(["-retries", str(self._retries)])
+        if self._verify:
+            cmd.append("-verify")
+        if self._interface:
+            cmd.extend(["-interface", self._interface])
+        if self._exclude_ports:
+            cmd.extend(["-exclude-ports", self._exclude_ports])
+        if self._passive:
+            cmd.append("-passive")
+        cmd.extend(["-l", target_file])
+        return cmd
 
     async def setup(self):
         return True
