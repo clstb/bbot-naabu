@@ -77,6 +77,13 @@ class naabu(BaseModule):
         },
     ]
 
+    TUNNEL_INTERFACE_PREFIXES = ("wg", "tun", "tap", "utun", "tailscale")
+
+    def _is_tunnel_interface(self, interface):
+        if not interface:
+            return False
+        return interface.startswith(self.TUNNEL_INTERFACE_PREFIXES)
+
     async def setup(self):
         return True
 
