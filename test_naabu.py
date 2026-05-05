@@ -272,3 +272,53 @@ class TestSetupHelpers:
     def test_top_ports_zero(self, module):
         port_args = module._resolve_port_args("", 0)
         assert port_args == ["-top-ports", "0"]
+
+
+class TestTargetResolution:
+    def test_ip_address_target(self, module):
+        event = _make_event("IP_ADDRESS", "192.168.1.1")
+        module._exclude_cdn = False
+        correlator, targets = module._resolve_targets([event])
+        assert "192.168.1.1" in targets
+        parents = correlator.search("192.168.1.1")
+        assert event in parents
+
+    def test_dns_name_resolved(self, module, dns_event):
+        module._exclude_cdn = False
+        correlator, targets = module._resolve_targets([dns_event])
+        assert "93.184.216.34" in targets
+        parents = correlator.search("93.184.216.34")
+        assert dns_event in parents
+
+    def test_ip_range_expanded(self, module):
+        event = _make_event("IP_RANGE", "10.0.0.0/30")
+        module._exclude_cdn = False
+        correlator, targets = module._resolve_targets([event])
+        assert len(targets) == 4
+        parents = correlator.search("10.0.0.1")
+        assert event in parents
+
+    def test_cdn_exclusion(self, module, cdn_event):
+        module._exclude_cdn = True
+        correlator, targets = module._resolve_targets([cdn_event])
+        assert len(targets) == 0
+
+    def test_cdn_exclusion_disabled(self, module, cdn_event):
+        module._exclude_cdn = False
+        correlator, targets = module._resolve_targets([cdn_event])
+        assert len(targets) > 0
+
+    def test_empty_events(self, module):
+        module._exclude_cdn = False
+        correlator, targets = module._resolve_targets([])
+        assert len(targets) == 0
+
+    def test_deduplication(self, module):
+        e1 = _make_event("IP_ADDRESS", "192.168.1.1")
+        e2 = _make_event("IP_ADDRESS", "192.168.1.1")
+        module._exclude_cdn = False
+        correlator, targets = module._resolve_targets([e1, e2])
+        assert len(targets) == 1
+        parents = correlator.search("192.168.1.1")
+        assert e1 in parents
+        assert e2 in parents

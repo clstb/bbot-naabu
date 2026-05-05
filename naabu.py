@@ -95,6 +95,42 @@ class naabu(BaseModule):
             return False
         return any(tag.startswith("cdn-") for tag in event.tags)
 
+    def _resolve_targets(self, events):
+        correlator = RadixTarget()
+        targets = set()
+        for event in sorted(events, key=lambda e: host_size_key(e.host)):
+            if self._should_exclude(event):
+                continue
+            ips = set()
+            if event.type == "IP_RANGE":
+                try:
+                    network = ipaddress.ip_network(event.host, strict=False)
+                    for ip in network:
+                        ips.add(str(ip))
+                except ValueError:
+                    pass
+            elif event.type == "IP_ADDRESS":
+                try:
+                    ipaddress.ip_address(event.host)
+                    ips.add(event.host)
+                except ValueError:
+                    pass
+            elif event.type == "DNS_NAME":
+                for h in event.resolved_hosts:
+                    try:
+                        ipaddress.ip_address(h)
+                        ips.add(h)
+                    except ValueError:
+                        continue
+            for ip in ips:
+                existing = correlator.search(ip)
+                if existing is None:
+                    correlator.insert(ip, {event})
+                else:
+                    existing.add(event)
+                targets.add(ip)
+        return correlator, targets
+
     def _build_command(self, target_file):
         cmd = ["naabu", "-json", "-silent"]
         cmd.extend(["-s", self.SCAN_TYPE_MAP[self._scan_type]])
