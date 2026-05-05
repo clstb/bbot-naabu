@@ -322,3 +322,86 @@ class TestTargetResolution:
         parents = correlator.search("192.168.1.1")
         assert e1 in parents
         assert e2 in parents
+
+
+class TestHandleBatch:
+    @pytest.mark.asyncio
+    async def test_basic_scan_emits_ports(self, module, ip_event):
+        module._exclude_cdn = False
+        module._scan_type = "syn"
+        module._build_command = MagicMock(return_value=["naabu", "-json", "-silent", "-l", "/tmp/targets"])
+        module.make_event = MagicMock(side_effect=lambda d=None, t=None, **kw: MagicMock(data=d, type=t))
+
+        async def mock_run_process(*args, **kwargs):
+            yield '{"ip":"192.168.1.1","port":80}'
+            yield '{"ip":"192.168.1.1","port":443}'
+
+        module.run_process_live = mock_run_process
+        await module.handle_batch(ip_event)
+        assert module.emit_event.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_udp_scan_emits_udp_ports(self, module, ip_event):
+        module._exclude_cdn = False
+        module._scan_type = "udp"
+        module._build_command = MagicMock(return_value=["naabu", "-json", "-silent", "-l", "/tmp/targets"])
+        module.make_event = MagicMock(side_effect=lambda d=None, t=None, **kw: MagicMock(data=d, type=t))
+
+        async def mock_run_process(*args, **kwargs):
+            yield '{"ip":"192.168.1.1","port":53}'
+
+        module.run_process_live = mock_run_process
+        await module.handle_batch(ip_event)
+        call_kwargs = module.make_event.call_args[1]
+        assert call_kwargs["event_type"] == "OPEN_UDP_PORT"
+
+    @pytest.mark.asyncio
+    async def test_empty_targets_no_scan(self, module, cdn_event):
+        module._exclude_cdn = True
+        module.run_process_live = MagicMock()
+        await module.handle_batch(cdn_event)
+        module.run_process_live.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_skipped(self, module, ip_event):
+        module._exclude_cdn = False
+        module._scan_type = "syn"
+        module._build_command = MagicMock(return_value=["naabu", "-json", "-silent", "-l", "/tmp/targets"])
+        module.make_event = MagicMock(side_effect=lambda d=None, t=None, **kw: MagicMock(data=d, type=t))
+
+        async def mock_run_process(*args, **kwargs):
+            yield '{"ip":"192.168.1.1","port":80}'
+            yield "not valid json"
+            yield '{"ip":"192.168.1.1","port":443}'
+
+        module.run_process_live = mock_run_process
+        await module.handle_batch(ip_event)
+        assert module.emit_event.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_process_failure_sets_error(self, module, ip_event):
+        module._exclude_cdn = False
+        module._build_command = MagicMock(return_value=["naabu", "-json", "-silent", "-l", "/tmp/targets"])
+
+        async def mock_run_process(*args, **kwargs):
+            raise Exception("naabu crashed")
+            yield  # noqa: unreachable — makes this an async generator
+
+        module.run_process_live = mock_run_process
+        await module.handle_batch(ip_event)
+        module.set_error_state.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_dns_name_event_uses_hostname(self, module, dns_event):
+        module._exclude_cdn = False
+        module._scan_type = "syn"
+        module._build_command = MagicMock(return_value=["naabu", "-json", "-silent", "-l", "/tmp/targets"])
+        module.make_event = MagicMock(side_effect=lambda d=None, t=None, **kw: MagicMock(data=d, type=t))
+
+        async def mock_run_process(*args, **kwargs):
+            yield '{"ip":"93.184.216.34","port":80}'
+
+        module.run_process_live = mock_run_process
+        await module.handle_batch(dns_event)
+        call_kwargs = module.make_event.call_args[1]
+        assert "example.com:80" == call_kwargs["data"]

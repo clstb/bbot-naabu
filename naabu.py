@@ -175,7 +175,39 @@ class naabu(BaseModule):
         return True
 
     async def handle_batch(self, *events):
-        pass
+        correlator, targets = self._resolve_targets(events)
+        if not targets:
+            return
+
+        target_file = self.helpers.tempfile(sorted(targets), pipe=False)
+        self._temp_files.append(target_file)
+        command = self._build_command(target_file)
+
+        try:
+            async for line in self.run_process_live(command, stderr=subprocess.DEVNULL):
+                result = self._parse_result(line)
+                if result is None:
+                    continue
+                ip, port = result
+                parent_events = correlator.search(ip)
+                if parent_events is None:
+                    continue
+                emitted_hosts = set()
+                for parent_event in parent_events:
+                    host = parent_event.host if parent_event.type == "DNS_NAME" else ip
+                    if host not in emitted_hosts:
+                        event_data = self.helpers.make_netloc(host, port)
+                        event_type = "OPEN_UDP_PORT" if self._scan_type == "udp" else "OPEN_TCP_PORT"
+                        evt = self.make_event(
+                            data=event_data,
+                            event_type=event_type,
+                            parent=parent_event,
+                            context=f"{{module}} executed a {self._scan_type} scan against {parent_event.data} and found: {{event.type}}: {{event.data}}",
+                        )
+                        await self.emit_event(evt)
+                        emitted_hosts.add(host)
+        except Exception as e:
+            self.set_error_state(f"naabu scan failed: {e}")
 
     @staticmethod
     def _parse_result(line):
